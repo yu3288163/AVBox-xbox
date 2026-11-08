@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">X-BOX</string>
+    <string name="app_name">Y-BOX</string>
 
     <string name="settings_language">語言</string>
     <string name="settings_group_language_layout">語言與佈局</string>
@@ -432,6 +432,11 @@
     <string name="config_current_repo">目前：%1$s · 共 %2$d 倉</string>
     <string name="config_repo_search_hint">搜尋倉庫名稱或地址</string>
     <string name="home_switch_repo">切換倉庫</string>
+    <string name="settings_vod_direct_play">點擊海報直接播放</string>
+    <string name="settings_vod_direct_play_subtitle">進入詳情頁即在頂部小窗開播，不用再按一次「播放」；關閉後回到兩步式</string>
+    <string name="detail_expand_fullscreen">全螢幕播放</string>
+    <string name="detail_danmu_hide">關閉彈幕</string>
+    <string name="detail_danmu_show">開啟彈幕</string>
     <string name="config_add_subscribe">新增訂閱</string>
     <string name="config_add_live_source">新增直播源</string>
     <string name="config_edit_subscribe">編輯訂閱</string>

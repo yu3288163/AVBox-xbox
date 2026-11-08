@@ -264,6 +264,14 @@ internal class PlayerActionsDelegate(private val host: VideoPlayerController) : 
         hideBottom()
     }
 
+    override fun onExpandFullscreenClicked() {
+        // 小窗模式下点「全屏」：把播放从小窗放大到整屏。
+        // 切全屏的具体策略由详情页决定（DetailActivity），播放器层只发信号。
+        val activity = host.playerActivity() ?: return
+        (activity as? DetailActivity)?.expandInlinePlayer()
+        hideBottom()
+    }
+
     override fun onParamsClicked() {
         keepControlsAlive()
         host.state.openParamsSheet(host.config.buildParamsSheet())

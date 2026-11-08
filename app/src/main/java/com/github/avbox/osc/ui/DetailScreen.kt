@@ -9,10 +9,16 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ContainedLoadingIndicator
@@ -41,6 +47,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -117,12 +124,49 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
         configuration.screenWidthDp,
         configuration.screenHeightDp,
     )
-    LaunchedEffect(heroGone, flatHero) { activity.setStatusBarIconsLight(heroGone && !flatHero) }
 
     val isLandscapeNow = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val fullBox = DetailFullScreenFrame.fullBox(rotating, full, isLandscapeNow)
     val inTransition = enteringFullscreen || exitingFullscreen
     var slideWidthPx by remember { mutableFloatStateOf(0f) }
+    var pageHeightPx by remember { mutableFloatStateOf(0f) }
+
+    val statusBarTop = with(density) {
+        WindowInsets.safeDrawing.getTop(density).toDp()
+    }
+    // 整个播放区域让开系统状态栏，再留一点余量，画面不再顶到信号/电量
+    val inlineTopInset: Dp = maxOf(statusBarTop, 24.dp) + 8.dp
+    val directPlay by vm.directPlay.collectAsState()
+    // 画中画态下详情页只保留播放器，避免整张详情页被缩小进小窗产生黑边
+    val pipMode by vm.pipMode.collectAsState()
+    // 小窗总高 = 顶部安全距离 + 播放区高度。播放区不能只按 16:9 给 202dp，
+    // 否则播放器的控制栏图标排和字幕/选集弹窗会被小窗边界裁掉。
+    val inlinePlayerHeight: Dp = remember(
+        configuration.screenWidthDp,
+        isLandscapeNow,
+        inlineTopInset,
+    ) {
+        val byWidth = configuration.screenWidthDp * 9f / 16f
+        val floor = if (isLandscapeNow) 240f else 300f
+        val cap = if (isLandscapeNow) 340f else 360f
+        byWidth.coerceIn(floor, cap).dp + inlineTopInset
+    }
+    // 已在顶部小窗播放：关掉开关 / 还没起播 / 进入全屏过渡时都退回原来的两步式布局
+    val inlinePlayerVisible = directPlay && playSignal > 0 && !full && !inTransition && !flatHero && !pipMode
+    // 播放器浮层跟随详情页列表滚动，滚过顶部后自然让位给下方内容
+    val playerScrollPx by remember(listState, pageHeightPx) {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) pageHeightPx.toInt()
+            else listState.firstVisibleItemScrollOffset
+        }
+    }
+    val playerAtTop = playerScrollPx == 0
+    // 小窗顶部的黑色安全区上要用浅色状态栏图标；滚动让位后恢复详情页的深色图标
+    LaunchedEffect(heroGone, flatHero, inlinePlayerVisible, playerAtTop) {
+        activity.setStatusBarIconsLight(
+            heroGone && !flatHero && !(inlinePlayerVisible && playerAtTop),
+        )
+    }
 
     val container = activity.playContainer
     val scope = rememberCoroutineScope()
@@ -146,11 +190,13 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
         }
     }
 
-    LaunchedEffect(pageState) {
+    LaunchedEffect(pageState, flatHero) {
         if (pageState is DetailViewModel.PageState.Ready) {
             withFrameNanos { }
             withFrameNanos { }
             activity.preheatWebView()
+            // OK影视模式：详情数据就绪就直接在顶部小窗起播，不再等用户点「播放」
+            vm.requestAutoInlinePlay(enabled = !flatHero)
         }
     }
 
@@ -246,49 +292,55 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .onSizeChanged { slideWidthPx = it.width.toFloat() }
+                .onSizeChanged {
+                    slideWidthPx = it.width.toFloat()
+                    pageHeightPx = it.height.toFloat()
+                }
                 .background(MaterialTheme.colorScheme.surface),
         ) {
-            if (flatHero) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.fillMaxSize().layerBackdrop(pageBackdrop)) {
-                        val info = vm.vodInfo
-                        if (info != null) {
-                            DetailHeroPoster(
-                                vm = vm,
-                                title = info.name ?: "TVBox",
-                                altTitle = info.en,
-                                picture = info.pic,
-                                year = info.year,
-                                onImage = { image ->
-                                    scope.launch {
-                                        val seed = withContext(Dispatchers.Default) { ImagePalette.seedOf(image) }
-                                        if (seed != null && backdropSeed == null) backdropSeed = seed
-                                    }
-                                },
-                                onBackdropPic = { backdropPic = it },
-                                paused = full,
-                                modifier = Modifier.fillMaxSize(),
+            if (!pipMode) {
+                if (flatHero) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxSize().layerBackdrop(pageBackdrop)) {
+                            val info = vm.vodInfo
+                            if (info != null) {
+                                DetailHeroPoster(
+                                    vm = vm,
+                                    title = info.name ?: "TVBox",
+                                    altTitle = info.en,
+                                    picture = info.pic,
+                                    year = info.year,
+                                    onImage = { image ->
+                                        scope.launch {
+                                            val seed = withContext(Dispatchers.Default) { ImagePalette.seedOf(image) }
+                                            if (seed != null && backdropSeed == null) backdropSeed = seed
+                                        }
+                                    },
+                                    onBackdropPic = { backdropPic = it },
+                                    paused = full,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Brush.verticalGradient(*FlatPageScrimStops)),
                             )
                         }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Brush.verticalGradient(*FlatPageScrimStops)),
-                        )
+                        FlatScrollScrim(progress = { heroProgress })
                     }
-                    FlatScrollScrim(progress = { heroProgress })
+                } else if (!inlinePlayerVisible) {
+                    // 内嵌小窗播放改走卡片式详情页的浅灰纯色底，不再铺海报模糊渐变
+                    PosterBackdrop(
+                        pic = backdropSource,
+                        onImage = { image ->
+                            scope.launch {
+                                val seed = withContext(Dispatchers.Default) { ImagePalette.seedOf(image) }
+                                if (seed != null && backdropSeed == null) backdropSeed = seed
+                            }
+                        },
+                    )
                 }
-            } else {
-                PosterBackdrop(
-                    pic = backdropSource,
-                    onImage = { image ->
-                        scope.launch {
-                            val seed = withContext(Dispatchers.Default) { ImagePalette.seedOf(image) }
-                            if (seed != null && backdropSeed == null) backdropSeed = seed
-                        }
-                    },
-                )
             }
 
             Box(
@@ -298,7 +350,7 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
                         IntOffset((-slideProgress() * slideWidthPx * ContentSlideRatio).toInt(), 0)
                     },
             ) {
-                if (!fullBox || exitingFullscreen) {
+                if (!pipMode && (!fullBox || exitingFullscreen)) {
                     when (val state = pageState) {
                         is DetailViewModel.PageState.Loading -> {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -327,12 +379,14 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
                                     listState = listState,
                                     onPosterPic = { backdropPic = it },
                                     onSeed = { argb -> if (argb != null) backdropSeed = argb },
+                                    inlinePlayerVisible = inlinePlayerVisible,
+                                    inlinePlayerHeight = inlinePlayerHeight,
                                 )
                             }
                         }
                     }
                 }
-                if (!fullBox || exitingFullscreen) {
+                if (!pipMode && (!fullBox || exitingFullscreen)) {
                     DetailTopScrim(
                         modifier = Modifier.align(Alignment.TopCenter),
                         alpha = if (flatHero) 1f else 1f - heroProgress,
@@ -342,23 +396,46 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
 
             val playerContainer = container
             if (playerContainer != null) {
+                // 同一个 PlayContainer 实例只挂一次：内嵌态缩成顶部一小块并跟随列表滚动，
+                // 全屏态（或关闭开关后的两步式）仍用原来的整屏滑入，避免 View 反复换父容器。
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .offset {
-                            IntOffset(((1f - slideProgress()) * slideWidthPx).toInt(), 0)
-                        },
+                    modifier = if (pipMode) {
+                        // 画中画里只留播放器：整窗铺满、不带滑入/滚动偏移
+                        Modifier.fillMaxSize().background(Color.Black)
+                    } else if (inlinePlayerVisible) {
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .fillMaxWidth()
+                            .height(inlinePlayerHeight)
+                            .offset { IntOffset(0, -playerScrollPx) }
+                            // 顶部安全距离露出一条黑底，状态栏图标压在这条上而不是压在画面上
+                            .background(Color.Black)
+                    } else {
+                        Modifier
+                            .fillMaxSize()
+                            .offset {
+                                IntOffset(((1f - slideProgress()) * slideWidthPx).toInt(), 0)
+                            }
+                    },
                 ) {
                     AndroidView(
                         factory = { playerContainer },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (inlinePlayerVisible) {
+                                    Modifier.padding(top = inlineTopInset)
+                                } else {
+                                    Modifier
+                                },
+                            ),
                     )
                 }
             }
 
-            container?.uiState()?.let { PlayerCastOverlay(it) }
+            if (!pipMode) container?.uiState()?.let { PlayerCastOverlay(it) }
 
-            if (inTransition) {
+            if (!pipMode && inTransition) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -373,8 +450,10 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
             }
         }
 
-        EpisodeSheet(vm, slideFromEnd = fullBox && isLandscapeNow, showQuality = full)
-        VodCardMenu(vodMenu) { menuContext.jumpToSearch(it) }
+        if (!pipMode) {
+            EpisodeSheet(vm, slideFromEnd = fullBox && isLandscapeNow, showQuality = full)
+            VodCardMenu(vodMenu) { menuContext.jumpToSearch(it) }
+        }
     }
 }
 

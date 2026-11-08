@@ -48,6 +48,10 @@ fun DanmuSettingSheet(sheet: DanmuSettingSheetState, onDismiss: () -> Unit) {
             var size by remember { mutableIntStateOf(Math.round(DanmuSettingsState.config.sizeScale * 10)) }
             var line by remember { mutableIntStateOf(DanmuSettingsState.config.maxLine) }
             var alpha by remember { mutableIntStateOf(Math.round(DanmuSettingsState.config.alpha * 100)) }
+            // 弹幕总开关放在面板第一行：开启/关闭两态，0=开启 1=关闭
+            var danmuOpenIdx by remember {
+                mutableIntStateOf(if (DanmuSettingsState.config.open) 0 else 1)
+            }
             Spacer(Modifier.height(playerDim(R.dimen.vs_24)))
             SheetHeaderRow(title = stringResource(R.string.danmu_settings)) {
                 SheetTextAction(
@@ -67,6 +71,21 @@ fun DanmuSettingSheet(sheet: DanmuSettingSheetState, onDismiss: () -> Unit) {
             Spacer(Modifier.height(playerDim(R.dimen.vs_12)))
             val postSettings: (Boolean) -> Unit = { forColor ->
                 sheet.onSettingsApplied(forColor)
+            }
+
+            // 弹幕总开关：以前是详情页小窗右上角的悬浮按钮，挪到这里统一管理
+            SheetLabelRow(stringResource(R.string.settings_danmu_switch)) {
+                SheetChipRow(
+                    listOf(
+                        stringResource(R.string.common_on),
+                        stringResource(R.string.common_off),
+                    ),
+                    danmuOpenIdx,
+                    onSelect = { idx ->
+                        danmuOpenIdx = idx
+                        sheet.onOpenChanged(idx == 0)
+                    },
+                )
             }
 
             SheetLabelRow(stringResource(R.string.danmu_online)) {

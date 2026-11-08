@@ -49,6 +49,7 @@ private class NoopPlacementActions : PlayerActions {
     override fun onDanmuSearchClicked() = Unit
     override fun onDanmuSearchLongClicked() = Unit
     override fun onRotateClicked() = Unit
+    override fun onExpandFullscreenClicked() = Unit
     override fun onParamsClicked() = Unit
     override fun onInfoOsdClicked() = Unit
     override fun onBackClicked() = Unit

@@ -13,11 +13,12 @@ android {
     ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
-        applicationId = "com.github.xbox.osc"
+        // 改成 Y-BOX 的独立包名：与旧的 X-BOX 包可以并存安装，互不覆盖
+        applicationId = "com.github.ybox.osc"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 47
-        versionName = "1.3.4.10-xbox"
+        versionCode = 49
+        versionName = "1.3.4.11-ybox"
         multiDexEnabled = true
         ndk {
             abiFilters += setOf("arm64-v8a")

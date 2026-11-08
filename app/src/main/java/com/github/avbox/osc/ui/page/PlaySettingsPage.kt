@@ -53,6 +53,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit) {
     var autoLandscape by remember { mutableStateOf(KV.get(KVKeys.PLAY_AUTO_LANDSCAPE, KVKeys.PLAY_AUTO_LANDSCAPE_DEFAULT)) }
     var pipEnabled by remember { mutableStateOf(KV.get(KVKeys.PLAY_PIP_ENABLED, KVKeys.PLAY_PIP_ENABLED_DEFAULT)) }
     var followSystem by remember { mutableStateOf(KV.get(KVKeys.ORIENTATION_FOLLOW_SYSTEM, KVKeys.ORIENTATION_FOLLOW_SYSTEM_DEFAULT)) }
+    var vodDirectPlay by remember { mutableStateOf(KV.get(KVKeys.VOD_DIRECT_PLAY, KVKeys.VOD_DIRECT_PLAY_DEFAULT)) }
     var sliderPreloadDuration by remember(config.preloadDuration) { mutableStateOf(config.preloadDuration) }
     var sliderCacheSize by remember(config.exoCacheSizeMb) { mutableStateOf(config.exoCacheSizeMb) }
 
@@ -204,6 +205,18 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit) {
                         subtitle = stringResource(R.string.settings_music_page_subtitle),
                         checked = UiSettingsState.config.musicAutoOpenPage,
                         onCheckedChange = { UiSettingsState.musicAutoOpenPage = it },
+                    )
+                }
+                SettingsCard(SettingsCardPosition.MIDDLE) {
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_vod_direct_play),
+                        leadingIconRes = R.drawable.player_ic_play,
+                        subtitle = stringResource(R.string.settings_vod_direct_play_subtitle),
+                        checked = vodDirectPlay,
+                        onCheckedChange = {
+                            KV.put(KVKeys.VOD_DIRECT_PLAY, it)
+                            vodDirectPlay = it
+                        },
                     )
                 }
                 SettingsCard(SettingsCardPosition.MIDDLE) {

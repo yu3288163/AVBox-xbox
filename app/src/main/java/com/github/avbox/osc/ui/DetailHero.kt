@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -220,6 +221,8 @@ internal fun DetailHero(
     onFollow: () -> Unit,
     vm: DetailViewModel,
     rollPaused: Boolean = false,
+    inlineMode: Boolean = false,
+    sourceName: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -252,7 +255,12 @@ internal fun DetailHero(
         configuration.screenWidthDp,
         configuration.screenHeightDp,
     )
-    val captionColor = if (flat) Color.White else heroCaptionColor()
+    val captionColor = when {
+        flat -> Color.White
+        // 内嵌模式下顶部已经是播放器画面，下面直接落信息卡片，文字要按页面底色取色
+        inlineMode -> MaterialTheme.colorScheme.onSurface
+        else -> heroCaptionColor()
+    }
     if (flat) {
         Box(
             modifier = modifier
@@ -306,6 +314,25 @@ internal fun DetailHero(
         return
     }
     Column(modifier = modifier.fillMaxWidth()) {
+        if (inlineMode) {
+            // 卡片式信息卡：还原上游 AVBox 的白色圆角卡片，
+            // 并把原先悬浮在渐变背景上的 5 个圆形按钮全部收进卡片里。
+            InlineDetailCard(
+                title = title,
+                metaTail = metaTail,
+                sourceName = sourceName,
+                descriptionText = descriptionText,
+                descriptionExpanded = descriptionExpanded,
+                onToggleDescription = { descriptionExpanded = !descriptionExpanded },
+                collected = collected,
+                followed = followed,
+                onBack = onBack,
+                onCollect = onCollect,
+                onMusic = onMusic,
+                onCast = onCast,
+                onFollow = onFollow,
+            )
+        } else {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -376,6 +403,7 @@ internal fun DetailHero(
                 )
             }
         }
+        }
         DetailHeroInfoBlock(
             ratingText = ratingText,
             metaTail = metaTail,
@@ -388,12 +416,204 @@ internal fun DetailHero(
             onCast = onCast,
             onFollow = onFollow,
             captionColor = captionColor,
+            showPlayButton = !inlineMode,
+            visible = !inlineMode,
             modifier = Modifier.padding(
                 start = HeroContentHorizontalPadding,
                 end = HeroContentHorizontalPadding,
                 top = HeroContentTopPadding,
                 bottom = HeroContentBottomPadding,
             ),
+        )
+    }
+}
+
+
+/**
+ * 内嵌小窗播放时的「信息卡」：还原上游 AVBox 的白色圆角卡片样式，
+ * 同时保留原先悬浮在渐变背景上的 5 个圆形按钮（返回 / 收藏 / 音乐 / 投屏 / 追更）。
+ */
+@Composable
+private fun InlineDetailCard(
+    title: String,
+    metaTail: String,
+    sourceName: String?,
+    descriptionText: String?,
+    descriptionExpanded: Boolean,
+    onToggleDescription: () -> Unit,
+    collected: Boolean,
+    followed: Boolean,
+    onBack: () -> Unit,
+    onCollect: () -> Unit,
+    onMusic: () -> Unit,
+    onCast: () -> Unit,
+    onFollow: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, end = 6.dp, top = 12.dp)
+            .background(MaterialTheme.colorScheme.surfaceBright, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        // ① 返回 ② 收藏：保持原来左右两角的圆形按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CardCircleButton(
+                iconRes = R.drawable.ic_arrow_left,
+                contentDescription = stringResource(R.string.common_back),
+                onClick = onBack,
+            )
+            Spacer(Modifier.weight(1f))
+            CardCircleButton(
+                iconRes = if (collected) {
+                    R.drawable.ic_tab_collect_filled
+                } else {
+                    R.drawable.ic_tab_collect
+                },
+                contentDescription = stringResource(
+                    if (collected) R.string.detail_uncollect else R.string.detail_collect,
+                ),
+                tint = if (collected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                onClick = onCollect,
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!sourceName.isNullOrBlank()) {
+                Text(
+                    text = stringResource(R.string.detail_source, sourceName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainer,
+                            RoundedCornerShape(50),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+            if (metaTail.isNotEmpty()) {
+                Text(
+                    text = metaTail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(start = 10.dp),
+                )
+            }
+        }
+        if (!descriptionText.isNullOrEmpty()) {
+            Column(
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainer,
+                        RoundedCornerShape(12.dp),
+                    )
+                    .padding(12.dp),
+            ) {
+                Text(
+                    text = descriptionText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (descriptionExpanded) Int.MAX_VALUE else 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onToggleDescription),
+                )
+                Text(
+                    text = stringResource(
+                        if (descriptionExpanded) R.string.detail_collapse else R.string.detail_expand,
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 4.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onToggleDescription),
+                )
+            }
+        }
+        // ③④⑤ 音乐 / 投屏 / 追更：三个圆形按钮保留在信息卡底部
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CardCircleButton(
+                iconRes = R.drawable.ic_detail_music_player,
+                contentDescription = stringResource(R.string.detail_music_player),
+                onClick = onMusic,
+            )
+            Spacer(Modifier.width(HeroCircleButtonSpacing))
+            CardCircleButton(
+                iconRes = R.drawable.ic_detail_cast,
+                contentDescription = stringResource(R.string.common_cast),
+                onClick = onCast,
+            )
+            Spacer(Modifier.width(HeroCircleButtonSpacing))
+            CardCircleButton(
+                iconRes = R.drawable.ic_tab_following,
+                contentDescription = stringResource(R.string.tab_following),
+                tint = if (followed) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                onClick = onFollow,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CardCircleButton(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Box(
+        modifier = Modifier
+            .size(HeroCircleButtonSize)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .playerPressEffect(onTap = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(24.dp),
         )
     }
 }
@@ -450,8 +670,11 @@ private fun DetailHeroInfoBlock(
     onFollow: () -> Unit,
     captionColor: Color,
     flat: Boolean = false,
+    showPlayButton: Boolean = true,
+    visible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    if (!visible) return
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -471,31 +694,34 @@ private fun DetailHeroInfoBlock(
                 flat = flat,
             )
         }
-        val playInteraction = remember { MutableInteractionSource() }
-        Button(
-            onClick = onPlay,
-            modifier = Modifier
-                .padding(top = HeroActionSpacing)
-                .widthIn(min = HeroPlayCapsuleMinWidth)
-                .height(HeroPlayCapsuleHeight)
-                .pressScale(playInteraction, PLAYER_PRESS_SCALE),
-            shapes = PressMorphButtonShapes,
-            contentPadding = PaddingValues(horizontal = HeroPlayCapsuleHorizontalPadding),
-            interactionSource = playInteraction,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.player_ic_play),
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimary),
-                modifier = Modifier.size(22.dp),
-            )
-            Text(
-                text = stringResource(R.string.common_play),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.padding(start = 6.dp),
-            )
+        // 顶部小窗已经在播放，详情页不再重复放一个「播放」按钮
+        if (showPlayButton) {
+            val playInteraction = remember { MutableInteractionSource() }
+            Button(
+                onClick = onPlay,
+                modifier = Modifier
+                    .padding(top = HeroActionSpacing)
+                    .widthIn(min = HeroPlayCapsuleMinWidth)
+                    .height(HeroPlayCapsuleHeight)
+                    .pressScale(playInteraction, PLAYER_PRESS_SCALE),
+                shapes = PressMorphButtonShapes,
+                contentPadding = PaddingValues(horizontal = HeroPlayCapsuleHorizontalPadding),
+                interactionSource = playInteraction,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.player_ic_play),
+                    contentDescription = null,
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimary),
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = stringResource(R.string.common_play),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
         }
         DetailActionRow(
             followed = followed,

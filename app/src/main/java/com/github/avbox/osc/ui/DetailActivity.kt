@@ -58,6 +58,7 @@ class DetailActivity : BaseActivity(), PageHost {
     private var appliedFullscreen = false
     private var pendingEpisodeSync = false
     private var videoSizeWatchArmed = false
+    private var pipParamsRegistrationPending = false
 
     private val localSubtitlePicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -128,6 +129,8 @@ class DetailActivity : BaseActivity(), PageHost {
                         pendingEpisodeSync = false
                         return
                     }
+                    // 打开「画中画」开关且已起播时，按系统返回键退出也缩小成小窗继续播
+                    if (tryEnterPipOnBack()) return
                     container?.setPlayTitle(false)
                     container?.setExitingPreview(true)
                     finish()
@@ -146,8 +149,28 @@ class DetailActivity : BaseActivity(), PageHost {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // 参数已在起播 / 视频尺寸就绪 / 回到前台时提前登记好，这里绝不能再
+        // setPictureInPictureParams()：登记是异步交给 system_server 的，与紧接着的
+        // enterPictureInPictureMode() 抢同一帧会让第一次按 Home 只退到后台（只剩
+        // 后台播放胶囊），要到第二次按 Home 参数生效后才进得了小窗。
+        // Android 12+ 启用了 autoEnter 时系统一般直接自动进入，不会回调本方法；
+        // 不回调的 ROM 则由下面这次显式进入兜底。
+        if (isInPipMode()) return
         // 小窗形状按视频本身的宽高比决定，和当前是横屏还是竖屏播放无关
         PipLauncher.enter(
+            this,
+            DetailActivity::class.java,
+            playContainer?.kernelView,
+            isPortraitVideoForPip(),
+            false,
+        )
+    }
+
+    /** 打开画中画开关且正在播放时，返回键不直接关页，改为缩小成小窗继续播。 */
+    private fun tryEnterPipOnBack(): Boolean {
+        if (!PipLauncher.enabled() || !PipLauncher.isSupported(this)) return false
+        if (playContainer?.hasVideoSize() != true) return false
+        return PipLauncher.enter(
             this,
             DetailActivity::class.java,
             playContainer?.kernelView,
@@ -164,6 +187,9 @@ class DetailActivity : BaseActivity(), PageHost {
         newConfig: android.content.res.Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        // 进画中画时把整张竖屏详情页切成「纯播放器铺满」，退出后还原；
+        // 否则系统缩小的是「顶部小窗 + 详情内容」，小窗里会出现两边黑边、画面未填满。
+        vm.setPipMode(isInPictureInPictureMode)
         if (isInPictureInPictureMode) {
             pipWasActive = true
             playContainer?.uiState()?.clearOverlays()
@@ -232,7 +258,11 @@ class DetailActivity : BaseActivity(), PageHost {
                 it.pageHostRef = this
                 it.setPreviewMode(true)
                 it.qualitySelectedListener = PlayContainer.OnQualitySelectedListener { position -> vm.onQualitySelectionAccepted(position) }
+                // 顶部内嵌小窗也要跟踪视频宽高：宽高一就绪就刷新小窗比例，
+                // 不能只在进全屏时才挂这个监听。
+                it.videoSizeReadyListener = { portraitVideo -> onVideoSizeReady(portraitVideo) }
             }
+            schedulePipParamsRegistration()
         }
         return requireNotNull(playContainer) { "play container not created" }
     }
@@ -255,6 +285,14 @@ class DetailActivity : BaseActivity(), PageHost {
     fun playbackFacts(): DetailPlaybackFacts = DetailPlaybackFacts(
         landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
     )
+
+    /**
+     * 顶部小窗里的「全屏」按钮：把当前播放从小窗放大到整屏。
+     * 走详情页自己的 vm，播放器层不直接改 UI 状态。
+     */
+    fun expandInlinePlayer() {
+        vm.onFullScreenToggleRequested(true, playbackFacts())
+    }
 
     private fun releasePlayContainer() {
         playContainer?.hostDestroy()
@@ -294,6 +332,7 @@ class DetailActivity : BaseActivity(), PageHost {
             return
         }
         container.setData(session)
+        schedulePipParamsRegistration()
     }
 
     fun ensurePlaying(): PlayContainer {
@@ -449,6 +488,8 @@ class DetailActivity : BaseActivity(), PageHost {
             }, SYSBAR_APPEARANCE_REASSERT_DELAY_MS)
         }
         syncFullBoxSideEffects()
+        // 全屏 / 退出全屏会改变播放器 View 的位置，sourceRectHint 要跟着更新
+        schedulePipParamsRegistration()
     }
 
     private fun armVideoSizeWatch() {
@@ -464,14 +505,33 @@ class DetailActivity : BaseActivity(), PageHost {
     }
 
     private fun onVideoSizeReady(portraitVideo: Boolean) {
-        if (!videoSizeWatchArmed) return
-        videoSizeWatchArmed = false
-        playContainer?.videoSizeReadyListener = null
-        applyVideoOrientation(portraitVideo)
+        // 内嵌小窗也要按真实视频宽高刷新小窗参数，否则系统只拿到
+        // 「手机是竖屏」猜出来的 9:16，第一次的小窗形状就是错的。
         registerPipParams()
+        if (videoSizeWatchArmed) {
+            videoSizeWatchArmed = false
+            playContainer?.videoSizeReadyListener = null
+            applyVideoOrientation(portraitVideo)
+        }
+        // 监听器是一次性的，换集 / 换源后宽高还会变，继续挂上
+        playContainer?.videoSizeReadyListener = { next -> onVideoSizeReady(next) }
     }
 
-    /** 视频宽高已知后向系统登记小窗参数，Android 12+ 才能自动进小窗 */
+    /**
+     * 向系统提前登记画中画参数（开关状态、宽高比、sourceRectHint）。
+     * Android 12+ 的 autoEnter 必须在用户按 Home 之前登记好；等 onUserLeaveHint()
+     * 再登记就太晚，第一次按 Home 只会退到后台，第二次才生效。
+     * 用 decorView.post 是为了等播放器 View 布局完，拿到有效的 sourceRectHint。
+     */
+    private fun schedulePipParamsRegistration() {
+        if (pipParamsRegistrationPending) return
+        pipParamsRegistrationPending = true
+        window.decorView.post {
+            pipParamsRegistrationPending = false
+            if (!isFinishing && !isDestroyed) registerPipParams()
+        }
+    }
+
     private fun registerPipParams() {
         PipLauncher.registerAutoEnter(
             this,
@@ -483,10 +543,9 @@ class DetailActivity : BaseActivity(), PageHost {
     }
 
     private fun isPortraitVideoForPip(): Boolean {
-        val container = playContainer
-        if (container != null && container.hasVideoSize()) return container.isPortraitVideo()
-        return resources.configuration.orientation ==
-            android.content.res.Configuration.ORIENTATION_PORTRAIT
+        // 拿不到视频宽高时按横屏片（16:9）处理：手机竖着不代表视频是竖的
+        val container = playContainer ?: return false
+        return container.hasVideoSize() && container.isPortraitVideo()
     }
 
     override fun orientationPolicyValue(): Int {
@@ -503,6 +562,7 @@ class DetailActivity : BaseActivity(), PageHost {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        schedulePipParamsRegistration()
         if (portraitLockPending &&
             newConfig.orientation != Configuration.ORIENTATION_PORTRAIT
         ) {
@@ -548,6 +608,8 @@ class DetailActivity : BaseActivity(), PageHost {
 
     override fun onResume() {
         super.onResume()
+        // 设置里刚切换过画中画开关、或从小窗点回 app，都在这里同步参数
+        schedulePipParamsRegistration()
         applyStatusBarAppearance()
         playContainer?.hostResume()
         syncEpisodeAfterMusicPage()

@@ -23,6 +23,11 @@ class PlayContainerControlListener(private val container: PlayContainer) : VodCo
                     container.applyDanmuSettings(false)
                 },
                 onSettingsApplied = { forColor -> container.applyDanmuSettings(forColor) },
+                // 弹幕总开关：写持久化真源 + 通知运行时加载器（关闭时立即收起已加载的弹幕）
+                onOpenChanged = { enabled ->
+                    DanmuSettingsState.open = enabled
+                    container.danmuLoadController?.setEnabled(enabled)
+                },
             ),
         )
     }

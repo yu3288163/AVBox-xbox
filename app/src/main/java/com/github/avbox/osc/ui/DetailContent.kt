@@ -1,5 +1,6 @@
 package com.github.avbox.osc.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.avbox.osc.R
 import com.github.avbox.osc.api.ApiConfig
@@ -53,6 +56,8 @@ internal fun DetailContent(
     listState: LazyListState,
     onPosterPic: (String) -> Unit,
     onSeed: (Int?) -> Unit,
+    inlinePlayerVisible: Boolean = false,
+    inlinePlayerHeight: Dp = 0.dp,
 ) {
     val vodUi by vm.vodUi.collectAsState()
     val info = vodUi?.info ?: return
@@ -73,7 +78,10 @@ internal fun DetailContent(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 32.dp),
+        contentPadding = PaddingValues(
+            top = if (inlinePlayerVisible) inlinePlayerHeight else 0.dp,
+            bottom = 32.dp,
+        ),
     ) {
         item(key = "hero") {
             DetailHero(
@@ -90,20 +98,21 @@ internal fun DetailContent(
                 onPosterPic = onPosterPic,
                 onSeed = onSeed,
                 onBack = { activity.onBackPressedDispatcher.onBackPressed() },
-                onPlay = { vm.onPlayRequested(DetailPlaybackEntry.PlayCapsule) },
+                // 内嵌模式下已经在播了，这个按钮只负责放大到全屏；两步式下仍是起播
+                onPlay = if (inlinePlayerVisible) {
+                    { vm.onFullScreenToggleRequested(true, activity.playbackFacts()) }
+                } else {
+                    { vm.onPlayRequested(DetailPlaybackEntry.PlayCapsule) }
+                },
                 onMusic = { activity.openMusicPlayer() },
                 onCast = { activity.openCast() },
                 onCollect = { vm.toggleCollect() },
                 onFollow = { followScheduleOpen = true },
                 vm = vm,
                 rollPaused = heroRollPaused,
+                inlineMode = inlinePlayerVisible,
+                sourceName = displaySourceName,
             )
-        }
-
-        if (episodes.isNotEmpty()) {
-            item(key = "episodes") {
-                EpisodeRow(vm, info, episodes, playIndex, currentFlag)
-            }
         }
 
         if (flags.isNotEmpty()) {
@@ -111,7 +120,12 @@ internal fun DetailContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
+                        .padding(start = 6.dp, end = 6.dp, top = 12.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceBright,
+                            RoundedCornerShape(16.dp),
+                        )
+                        .padding(vertical = 12.dp),
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -141,7 +155,9 @@ internal fun DetailContent(
                     }
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (detailCompactChips()) 8.dp else 10.dp,
+                        ),
                     ) {
                         itemsIndexed(flags, key = { i, f -> "${i}_${f.name}" }) { _, flag ->
                             LineCard(
@@ -153,6 +169,12 @@ internal fun DetailContent(
                         }
                     }
                 }
+            }
+        }
+
+        if (episodes.isNotEmpty()) {
+            item(key = "episodes") {
+                EpisodeRow(vm, info, episodes, playIndex, currentFlag)
             }
         }
 
@@ -187,26 +209,48 @@ private fun LineCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val compact = detailCompactChips()
     DetailItemCard(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.width(DetailItemWidth),
+        modifier = if (compact) {
+            Modifier.widthIn(min = DetailChipMinWidth, max = DetailChipMaxWidth)
+        } else {
+            Modifier.width(DetailItemWidth)
+        },
     ) {
-        Text(
-            modifier = Modifier.marqueeOnOverflow(),
-            text = name,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = stringResource(R.string.detail_line_video_count, count),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.padding(top = 6.dp),
-        )
+        if (compact) {
+            // OK影视式小标签：一行只放线路名，集数信息不再撑高卡片
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.marqueeOnOverflow(),
+            )
+        } else {
+            Text(
+                modifier = Modifier.marqueeOnOverflow(),
+                text = name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.detail_line_video_count, count),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
     }
 }

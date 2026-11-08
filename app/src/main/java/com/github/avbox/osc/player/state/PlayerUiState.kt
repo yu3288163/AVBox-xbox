@@ -557,6 +557,11 @@ class DanmuSettingSheetState(
     val onOpenSearch: () -> Unit,
     val onReset: () -> Unit = {},
     val onSettingsApplied: (Boolean) -> Unit = {},
+    /**
+     * 弹幕总开关（开/关）变化回调。
+     * 面板只负责发信号，真正的持久化与运行时开关由宿主处理。
+     */
+    val onOpenChanged: (Boolean) -> Unit = {},
 )
 
 class DanmuSearchSheetState(
@@ -616,6 +621,11 @@ interface PlayerActions {
     fun onDanmuSearchLongClicked()
     fun onRotateClicked()
     fun onPipClicked()
+    /**
+     * 预览模式（小窗）下点击「全屏」：把当前播放从小窗放大到整屏。
+     * 由宿主（详情页）决定怎么切全屏，播放器层只负责发信号。
+     */
+    fun onExpandFullscreenClicked()
     fun onParamsClicked()
     fun onInfoOsdClicked()
     fun onBackClicked()

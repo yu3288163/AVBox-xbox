@@ -74,7 +74,8 @@ object PipLauncher {
         portraitVideo: Boolean,
         liveMode: Boolean,
     ) {
-        if (!enabled()) return
+        // 关掉开关时也要向系统登记一次 autoEnter=false，否则之前登记的
+        // 「回桌面自动进小窗」策略会残留，开关看起来不起作用。
         if (!isSupported(activity)) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
@@ -104,7 +105,7 @@ object PipLauncher {
         val rect = sourceRect(videoView)
         if (rect != null) builder.setSourceRectHint(rect)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(true)
+            builder.setAutoEnterEnabled(enabled())
             builder.setSeamlessResizeEnabled(true)
         }
         builder.setActions(buildActions(activity, targetClass, liveMode))

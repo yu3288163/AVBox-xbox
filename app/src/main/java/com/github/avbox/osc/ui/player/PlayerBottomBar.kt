@@ -60,6 +60,11 @@ private const val SEEK_STEP_MS = 10_000L
 
 private val PreviewPlayPauseBox = 40.dp
 
+// 小窗进度条末尾的「全屏」按钮尺寸
+private val PreviewFullscreenBox = 34.dp
+
+private val PreviewFullscreenIconSize = 22.dp
+
 private val SeekTrackHeight = 5.dp
 
 private val SeekThumbRadius = 6.dp
@@ -130,7 +135,7 @@ fun PlayerBottomBar(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(end = if (state.previewMode) 44.dp else 0.dp),
+            modifier = Modifier.padding(end = if (state.previewMode) 8.dp else 0.dp),
         ) {
             if (state.previewMode) {
                 PreviewPlayPauseButton(state, actions)
@@ -154,6 +159,14 @@ fun PlayerBottomBar(
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     modifier = Modifier.widthIn(min = 48.dp),
+                )
+                // 小窗模式下把「全屏」放在进度条后面：点一下把播放放大到整屏。
+                TransportButton(
+                    iconRes = R.drawable.ic_player_fullscreen,
+                    contentDescription = stringResource(R.string.detail_expand_fullscreen),
+                    box = PreviewFullscreenBox,
+                    iconSize = PreviewFullscreenIconSize,
+                    onClick = actions::onExpandFullscreenClicked,
                 )
             }
         }
@@ -205,6 +218,7 @@ private fun PlayerActionRow(
 ) {
     val actionBox = playerDim(R.dimen.vs_70)
     val actionIcon = playerDim(R.dimen.vs_50)
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     Row(
         modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -214,6 +228,28 @@ private fun PlayerActionRow(
             horizontalArrangement = Arrangement.spacedBy(playerDim(R.dimen.vs_12)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (landscape) {
+                // OK影视式：片头/片尾直接在控制栏打点，长按清除；
+                // 已设置时显示时间点并高亮，竖屏空间不足时仍走参数面板。
+                PlayerMenuButton(
+                    text = timeMarkLabel(
+                        stringResource(R.string.player_time_start),
+                        state.timeStartText,
+                    ),
+                    onClick = actions::onTimeStartClicked,
+                    onLongClick = actions::onTimeStartLongClicked,
+                    textColor = if (state.timeStartText.isEmpty()) Color.White else Color(0xFF02F8E1),
+                )
+                PlayerMenuButton(
+                    text = timeMarkLabel(
+                        stringResource(R.string.player_time_end),
+                        state.timeEndText,
+                    ),
+                    onClick = actions::onTimeEndClicked,
+                    onLongClick = actions::onTimeEndLongClicked,
+                    textColor = if (state.timeEndText.isEmpty()) Color.White else Color(0xFF02F8E1),
+                )
+            }
             TransportButton(
                 iconRes = R.drawable.player_ic_menu_episodes,
                 contentDescription = stringResource(R.string.detail_episodes),
@@ -231,6 +267,9 @@ private fun PlayerActionRow(
         }
     }
 }
+
+private fun timeMarkLabel(label: String, value: String): String =
+    if (value.isEmpty()) label else "$label $value"
 
 private const val TRANSPORT_COUNT = 5
 

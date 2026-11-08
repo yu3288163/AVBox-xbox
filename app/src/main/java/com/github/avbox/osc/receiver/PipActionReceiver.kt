@@ -51,7 +51,7 @@ class PipActionReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        private const val ACTION_PREFIX = "com.github.xbox.osc.pip."
+        private const val ACTION_PREFIX = "com.github.ybox.osc.pip."
         const val ACTION_PLAY_PAUSE = ACTION_PREFIX + "PLAY_PAUSE"
         const val ACTION_NEXT = ACTION_PREFIX + "NEXT"
         const val ACTION_PREVIOUS = ACTION_PREFIX + "PREVIOUS"

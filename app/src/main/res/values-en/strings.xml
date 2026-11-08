@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">X-BOX</string>
+    <string name="app_name">Y-BOX</string>
 
     <string name="settings_language">Language</string>
     <string name="settings_group_language_layout">Language &amp; Layout</string>
@@ -432,6 +432,11 @@
     <string name="config_current_repo">Current: %1$s · %2$d repos</string>
     <string name="config_repo_search_hint">Search repo name or URL</string>
     <string name="home_switch_repo">Switch Repo</string>
+    <string name="settings_vod_direct_play">Play on Poster Tap</string>
+    <string name="settings_vod_direct_play_subtitle">Start playback in a small player at the top of the detail page; turn off to require a tap on Play</string>
+    <string name="detail_expand_fullscreen">Fullscreen</string>
+    <string name="detail_danmu_hide">Turn off danmaku</string>
+    <string name="detail_danmu_show">Turn on danmaku</string>
     <string name="config_add_subscribe">Add Subscription</string>
     <string name="config_add_live_source">Add Live Source</string>
     <string name="config_edit_subscribe">Edit Subscription</string>

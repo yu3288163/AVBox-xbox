@@ -176,6 +176,22 @@ class DanmuLoadController(
         return false
     }
 
+    /**
+     * 详情页内嵌小窗上的常显开关：与全局弹幕设置保持同一真源。
+     * 调用方应先写 DanmuSettingsState.open，applySettings 会读取新值。
+     */
+    fun setEnabled(enabled: Boolean) {
+        temporarilyClosed = !enabled
+        overlayHidden = false
+        if (!enabled) {
+            close()
+            return
+        }
+        reloadForPlayback()
+        applySettings(true)
+        startIfReady()
+    }
+
     fun reloadForPlayback() {
         temporarilyClosed = false
         loadSeq.incrementAndGet()

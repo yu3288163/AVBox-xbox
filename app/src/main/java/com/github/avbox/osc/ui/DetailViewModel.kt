@@ -103,6 +103,16 @@ class DetailViewModel : ViewModel(), TmdbPosterCache {
     val exitingFullscreen = _exitingFullscreen.asStateFlow()
     private val _playSignal = MutableStateFlow(0)
     val playSignal = _playSignal.asStateFlow()
+    private val _directPlay = MutableStateFlow(KV.get(KVKeys.VOD_DIRECT_PLAY, KVKeys.VOD_DIRECT_PLAY_DEFAULT))
+    val directPlay: StateFlow<Boolean> = _directPlay.asStateFlow()
+    private val _pipMode = MutableStateFlow(false)
+    val pipMode: StateFlow<Boolean> = _pipMode.asStateFlow()
+
+    /** 画中画态：详情页只保留播放器铺满，退出后还原原布局。 */
+    fun setPipMode(active: Boolean) {
+        _pipMode.value = active
+    }
+    private var autoInlineTriggered = false
     private val _collected = MutableStateFlow(false)
     val collected = _collected.asStateFlow()
     private val _follow = MutableStateFlow<VodFollow?>(null)
@@ -545,8 +555,21 @@ class DetailViewModel : ViewModel(), TmdbPosterCache {
         applyPlaybackEntry(entry)
     }
 
+    /**
+     * 详情数据就绪后自动在顶部小窗起播（OK影视模式）。
+     * 只在本次详情页生命周期内触发一次；换源、切线路、回滚各有自己的播放策略，不该被重复起播。
+     */
+    fun requestAutoInlinePlay(enabled: Boolean) {
+        // enabled 由页面按布局传入：TV 横屏 flatHero 是整屏海报 + 底部信息，
+        // 塞一个顶部小窗会盖住返回按钮，那类布局保持原来的两步式。
+        if (!enabled || !_directPlay.value || autoInlineTriggered) return
+        if (vodInfo?.seriesMap?.get(vodInfo?.playFlag).isNullOrEmpty()) return
+        autoInlineTriggered = true
+        applyPlaybackEntry(DetailPlaybackEntry.AutoInline)
+    }
+
     internal fun applyPlaybackEntry(entry: DetailPlaybackEntry, resumable: Boolean = false) {
-        val plan = DetailPlaybackPolicy.plan(entry, resumable)
+        val plan = DetailPlaybackPolicy.plan(entry, resumable, _directPlay.value)
         if (plan.enterFullScreen) enterFullscreen()
         if (plan.startPlayback) _playSignal.value += 1
     }

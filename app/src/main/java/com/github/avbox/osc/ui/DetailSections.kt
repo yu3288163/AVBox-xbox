@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -30,11 +31,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -88,28 +89,26 @@ internal val DetailItemHeight = 70.dp
 internal val DetailItemMinWidth = 160.dp
 internal val DetailItemWidth = 160.dp
 
-private const val DetailGlassGlossAlpha = 0.06f
-private const val DetailGlassHighlightTopAlpha = 0.35f
-private const val DetailGlassHighlightBottomAlpha = 0.06f
+// 竖屏/手机（非 TV flatHero）用 OK影视式小标签；TV 横屏仍保留适合遥控器的大卡片
+internal val DetailChipHeight = 36.dp
+internal val DetailChipMinWidth = 56.dp
+internal val DetailChipMaxWidth = 160.dp
+
+@Composable
+internal fun detailCompactChips(): Boolean {
+    val cfg = LocalConfiguration.current
+    return !flatHeroLayout(cfg.smallestScreenWidthDp, cfg.screenWidthDp, cfg.screenHeightDp)
+}
+
 
 @Composable
 internal fun Modifier.detailGlass(shape: Shape): Modifier = this
     .clip(shape)
-    .background(detailCardColor())
-    .background(
-        Brush.verticalGradient(
-            0f to Color.White.copy(alpha = DetailGlassGlossAlpha),
-            0.45f to Color.Transparent,
-        ),
-    )
+    // 卡片式详情页里 chip 落在白色卡片上，改实色浅底 + 浅描边才有边界
+    .background(MaterialTheme.colorScheme.surfaceContainerLow)
     .border(
         width = 1.dp,
-        brush = Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = DetailGlassHighlightTopAlpha),
-                Color.White.copy(alpha = DetailGlassHighlightBottomAlpha),
-            ),
-        ),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
         shape = shape,
     )
 
@@ -120,11 +119,12 @@ internal fun DetailItemCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val compact = detailCompactChips()
+    val shape = RoundedCornerShape(if (compact) 20.dp else 16.dp)
     Column(
         modifier = modifier
-            .height(DetailItemHeight)
-            .defaultMinSize(minWidth = DetailItemMinWidth)
+            .height(if (compact) DetailChipHeight else DetailItemHeight)
+            .defaultMinSize(minWidth = if (compact) DetailChipMinWidth else DetailItemMinWidth)
             .detailGlass(shape)
             .then(
                 if (selected) {
@@ -134,7 +134,10 @@ internal fun DetailItemCard(
                 },
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(
+                horizontal = if (compact) 12.dp else 14.dp,
+                vertical = if (compact) 4.dp else 12.dp,
+            ),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
         content = content,
@@ -143,20 +146,35 @@ internal fun DetailItemCard(
 
 @Composable
 private fun SourceCard(name: String, selected: Boolean, onClick: () -> Unit) {
+    val compact = detailCompactChips()
     DetailItemCard(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.width(DetailItemWidth),
+        modifier = if (compact) {
+            Modifier.widthIn(min = DetailChipMinWidth, max = DetailChipMaxWidth)
+        } else {
+            Modifier.width(DetailItemWidth)
+        },
     ) {
         Text(
             text = name,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (compact) {
+                MaterialTheme.typography.labelLarge
+            } else {
+                MaterialTheme.typography.titleMedium
+            },
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .fillMaxWidth()
+                .then(
+                    if (compact) {
+                        Modifier.widthIn(max = DetailChipMaxWidth)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    },
+                )
                 .marqueeOnOverflow(),
         )
     }
@@ -174,7 +192,9 @@ internal fun SourceSection(vm: DetailViewModel, currentSourceName: String?) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp)
+            .padding(start = 6.dp, end = 6.dp, top = 12.dp)
+            .background(MaterialTheme.colorScheme.surfaceBright, RoundedCornerShape(16.dp))
+            .padding(vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier
@@ -202,7 +222,9 @@ internal fun SourceSection(vm: DetailViewModel, currentSourceName: String?) {
         LazyRow(
             state = listState,
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(
+                if (detailCompactChips()) 8.dp else 10.dp,
+            ),
         ) {
             if (currentSourceName != null) {
                 item(key = "current") {

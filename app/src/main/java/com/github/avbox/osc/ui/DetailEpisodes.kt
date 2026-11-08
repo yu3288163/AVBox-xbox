@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
@@ -79,7 +80,9 @@ internal fun EpisodeRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp)
+            .padding(start = 6.dp, end = 6.dp, top = 12.dp)
+            .background(MaterialTheme.colorScheme.surfaceBright, RoundedCornerShape(16.dp))
+            .padding(vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier
@@ -141,10 +144,11 @@ internal fun EpisodeRow(
                 listState.scrollToItem(minOf(playIndex, episodes.size - 1))
             }
         }
+        val compact = detailCompactChips()
         LazyRow(
             state = listState,
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
         ) {
             itemsIndexed(episodes) { index, ep ->
                 if (thumbnails) {
@@ -154,13 +158,21 @@ internal fun EpisodeRow(
                         episode = episodeMeta?.getOrNull(index),
                         selected = index == playIndex,
                         onClick = { vm.onEpisodeClick(index) },
+                        compact = compact,
                     )
                 } else {
                     EpisodeNameCard(
                         name = ep.name ?: (index + 1).toString(),
                         selected = index == playIndex,
                         onClick = { vm.onEpisodeClick(index) },
-                        modifier = Modifier.fillParentMaxWidth(),
+                        compact = compact,
+                        modifier = if (compact) {
+                            Modifier
+                                .height(DetailChipHeight)
+                                .widthIn(min = DetailChipMinWidth, max = DetailChipMaxWidth)
+                        } else {
+                            Modifier.fillParentMaxWidth()
+                        },
                     )
                 }
             }
@@ -199,12 +211,13 @@ private fun EpisodeCard(
     episode: TmdbEpisode?,
     selected: Boolean,
     onClick: () -> Unit,
+    compact: Boolean,
 ) {
     val stillPath = episode?.stillPath.orEmpty()
     val title = episode?.name?.takeIf { it.isNotBlank() } ?: name
     Column(
         modifier = Modifier
-            .width(EpisodeThumbWidth)
+            .width(if (compact) 132.dp else EpisodeThumbWidth)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
     ) {
@@ -265,8 +278,9 @@ private fun EpisodeNameCard(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(if (compact) 20.dp else 16.dp)
     Box(
         modifier = modifier
             .detailGlass(shape)
@@ -278,20 +292,28 @@ private fun EpisodeNameCard(
                 },
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(
+                horizontal = if (compact) 12.dp else 14.dp,
+                vertical = if (compact) 4.dp else 12.dp,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = name,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (compact) {
+                MaterialTheme.typography.labelLarge
+            } else {
+                MaterialTheme.typography.titleMedium
+            },
             fontWeight = FontWeight.SemiBold,
             color = if (selected) {
                 MaterialTheme.colorScheme.primary
             } else {
                 MaterialTheme.colorScheme.onSurface
             },
-            maxLines = Int.MAX_VALUE,
-            softWrap = true,
+            maxLines = if (compact) 1 else Int.MAX_VALUE,
+            softWrap = !compact,
+            overflow = if (compact) TextOverflow.Ellipsis else TextOverflow.Clip,
             textAlign = TextAlign.Center,
         )
     }

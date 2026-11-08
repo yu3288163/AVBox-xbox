@@ -136,7 +136,11 @@ object KVKeys {
     const val SITE_EXT_OVERRIDE = "site_ext_override"
     const val HOME_SITE_COLUMNS = "home_site_columns"
     const val PLAY_AUTO_LANDSCAPE = "play_auto_landscape"
-    const val PLAY_AUTO_LANDSCAPE_DEFAULT = false
+    // 默认开：横屏片源在竖屏全屏下会被 fit-center 缩成中间一条、上下大黑边，
+    // 自动转横屏后自然铺满。用户仍可在播放设置里关掉。
+    const val PLAY_AUTO_LANDSCAPE_DEFAULT = true
+    const val VOD_DIRECT_PLAY = "vod_direct_play"
+    const val VOD_DIRECT_PLAY_DEFAULT = true
     const val ORIENTATION_FOLLOW_SYSTEM = "orientation_follow_system"
     const val ORIENTATION_FOLLOW_SYSTEM_DEFAULT = true
     const val PLAY_PIP_ENABLED = "play_pip_enabled"
