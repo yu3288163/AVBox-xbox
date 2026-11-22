@@ -28,6 +28,7 @@ import com.github.avbox.osc.player.PlaybackPage
 import com.github.avbox.osc.player.PlaybackService
 import com.github.avbox.osc.player.PlaybackSession
 import com.github.avbox.osc.player.PlaybackViewBridge
+import com.github.avbox.osc.player.pip.PlaybackForegroundGuard
 import com.github.avbox.osc.player.engine.MediaSources
 import com.github.avbox.osc.player.state.CastSheetState
 import com.github.avbox.osc.player.usecase.WebParseUseCase
@@ -160,6 +161,8 @@ class MusicPlayerActivity : BaseActivity(), PlaybackPage {
 
     override fun onResume() {
         super.onResume()
+        // 音乐页接管播放时也要收掉别处残留的画中画小窗
+        PlaybackForegroundGuard.dismissStalePipPages(this)
         if (!ready) return
         AppLog.i("echo-music page onResume lifecyclePaused=$lifecyclePaused playing=${player.isPlaying} audioOnly=${controller.isConfirmedAudioOnly()}")
         controller.setMusicAudioOnly(true)
@@ -168,7 +171,8 @@ class MusicPlayerActivity : BaseActivity(), PlaybackPage {
     }
 
     override fun onPause() {
-        if (ready) {
+        // 被新播放页接管而关掉时不能暂停共用内核，否则新内容会被一起停住
+        if (ready && !PlaybackForegroundGuard.isSuperseded(this)) {
             AppLog.i("echo-music page onPause lifecyclePaused=$lifecyclePaused playing=${player.isPlaying} audioOnly=${controller.isConfirmedAudioOnly()}")
             host.hostPause()
             stopPositionTick()
@@ -183,11 +187,15 @@ class MusicPlayerActivity : BaseActivity(), PlaybackPage {
         if (ready || engine.attachedPage() === this) {
             dataViewModel.clearTip()
             syncHistory()
-            controller.setMusicAudioOnly(false)
-            if (isoBailed) {
-                engine.detachForHandover(this)
-            } else {
-                engine.detach(this)
+            // 被新播放页接管而关掉时，detach() 会 pause + stopPlayback 共用内核，
+            // 直接跳过；新页 attach 后自然接管，音乐模式标记也不该在这里改。
+            if (!PlaybackForegroundGuard.isSuperseded(this)) {
+                controller.setMusicAudioOnly(false)
+                if (isoBailed) {
+                    engine.detachForHandover(this)
+                } else {
+                    engine.detach(this)
+                }
             }
             controller.stopLoadWebView(true)
         }

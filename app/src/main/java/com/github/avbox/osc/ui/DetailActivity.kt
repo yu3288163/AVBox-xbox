@@ -233,6 +233,8 @@ class DetailActivity : BaseActivity(), PageHost {
 
     private fun stopPlaybackForPipClose() {
         if (pipCloseHandled) return
+        // 被新播放页接管而关掉：共用内核正在播新内容，绝不能走关小窗停播放。
+        if (PlaybackForegroundGuard.isSuperseded(this)) return
         pipCloseHandled = true
         pipWasActive = false
         PlaybackForegroundGuard.cancel(this)
@@ -241,6 +243,8 @@ class DetailActivity : BaseActivity(), PageHost {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // singleTop 复用本页播新内容时同样要收掉别处残留的小窗（跳过自己）
+        PlaybackForegroundGuard.dismissStalePipPages(this)
         setIntent(intent)
         pendingEpisodeSync = false
         vm.onFullScreenToggleRequested(false, playbackFacts())
@@ -295,7 +299,13 @@ class DetailActivity : BaseActivity(), PageHost {
     }
 
     private fun releasePlayContainer() {
-        playContainer?.hostDestroy()
+        val container = playContainer ?: return
+        if (PlaybackForegroundGuard.isSuperseded(this)) {
+            // 只清本页 UI，不 detach / pause 共用内核：新页已经接管了它
+            container.hostDestroyForTakeover()
+        } else {
+            container.hostDestroy()
+        }
         playContainer = null
     }
 
@@ -322,6 +332,9 @@ class DetailActivity : BaseActivity(), PageHost {
     }
 
     fun playCurrent() {
+        // 从旧的画中画小窗外点开新影片时，这里是真正起播的时机：先把仍挂在
+        // 系统画中画里的旧播放页收掉，否则小窗会一直浮在新详情页上面变成黑框。
+        PlaybackForegroundGuard.dismissStalePipPages(this)
         val container = ensurePlayContainer()
         container.cancelCastWait()
         container.endCastPrepare()
@@ -608,6 +621,9 @@ class DetailActivity : BaseActivity(), PageHost {
 
     override fun onResume() {
         super.onResume()
+        // 从桌面/首页点开新影片时，这里比起播更早：先把仍挂在系统画中画里的
+        // 旧播放页收掉，否则旧小窗会一直浮在新详情页上面（且已无画面，成黑框）。
+        PlaybackForegroundGuard.dismissStalePipPages(this)
         // 设置里刚切换过画中画开关、或从小窗点回 app，都在这里同步参数
         schedulePipParamsRegistration()
         applyStatusBarAppearance()
@@ -623,7 +639,10 @@ class DetailActivity : BaseActivity(), PageHost {
     override fun onPause() {
         // 进入画中画时系统同样会回调 onPause，此时绝不能暂停播放，
         // 否则小窗里是一张静止画面。只有真正切到后台/锁屏才暂停。
-        if (!isInPipMode()) playContainer?.hostPause()
+        // 被新播放页接管而关掉时也不能暂停：内核是共用的，会连新片一起停住。
+        if (!isInPipMode() && !PlaybackForegroundGuard.isSuperseded(this)) {
+            playContainer?.hostPause()
+        }
         super.onPause()
     }
 

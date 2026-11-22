@@ -244,6 +244,18 @@ class PlayContainer(activity: Activity) : FrameLayout(activity), CustomAdapt, Pl
         e.detachForHandover(this)
     }
 
+    /**
+     * 本页因「新的播放页接管」而被收掉时调用。
+     *
+     * 与 handOverToNextPage() 不同：这里连 detachForHandover 都不做，完全不触碰共用的
+     * PlaybackEngine。三种播放页共用同一个内核，旧画中画页 finish 时若去 detach / pause，
+     * 会把新页刚起播的内容一起停掉；新页随后 attach 就能直接接管。
+     */
+    fun hostDestroyForTakeover() {
+        handedOver = true
+        hostDestroy()
+    }
+
     override fun hostDestroy() {
         AppLog.i("echo-music destroy: hostDestroy enter")
         endCastPrepare()

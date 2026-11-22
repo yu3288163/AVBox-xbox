@@ -17,8 +17,8 @@ android {
         applicationId = "com.github.ybox.osc"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 49
-        versionName = "1.3.4.11-ybox"
+        versionCode = 51
+        versionName = "1.3.4.13-ybox"
         multiDexEnabled = true
         ndk {
             abiFilters += setOf("arm64-v8a")

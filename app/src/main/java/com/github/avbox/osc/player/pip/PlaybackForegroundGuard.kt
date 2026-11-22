@@ -28,6 +28,55 @@ object PlaybackForegroundGuard {
     private val main = Handler(Looper.getMainLooper())
     private val pending = HashMap<Int, Runnable>()
 
+    /**
+     * 因「新播放页接管」而被主动 finish 掉的旧画中画页。
+     *
+     * 系统画中画窗口绑定在具体的 Activity 实例上：用户按 Home 把影片 A 缩成小窗后，
+     * 再从桌面点开影片 B，会新建一个播放页实例去播 B；只要 A 不 finish，系统小窗
+     * 就一直浮在最上层，而且播放内核已被 B 接管，A 里只剩一个黑框（用户截图里的「展开」）。
+     *
+     * 被这样关掉的页**不能**走「用户手动关掉小窗」的停播放收尾：三种播放页共用同一个
+     * PlaybackEngine，停掉会把 B 刚起播的内容一起掐断。用弱引用集合，Activity 销毁后自动回收。
+     */
+    private val superseded: MutableSet<Activity> = java.util.Collections.synchronizedSet(
+        java.util.Collections.newSetFromMap<Activity>(java.util.WeakHashMap<Activity, Boolean>())
+    )
+
+    /**
+     * 新播放页接管播放时调用：把仍挂在系统画中画里的其它播放页收掉。
+     * 只在有真正处于 PiP 模式的旧页时才动作，正常进页不受影响。
+     */
+    @JvmStatic
+    fun dismissStalePipPages(current: Activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        for (activity in ActivityStack.getInstance().activities()) {
+            if (activity === current) continue
+            if (!isPlaybackPage(activity)) continue
+            if (activity.isFinishing || activity.isDestroyed) continue
+            val inPip = try {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity.isInPictureInPictureMode
+            } catch (th: Throwable) {
+                false
+            }
+            if (!inPip) continue
+            superseded.add(activity)
+            AppLog.i(TAG + " dismiss stale pip page=" + activity.javaClass.simpleName)
+            try {
+                activity.finish()
+            } catch (th: Throwable) {
+                AppLog.e(TAG, th)
+            }
+        }
+    }
+
+    /**
+     * 本次退出画中画是否因为被新播放页接管：是则跳过停播放收尾，避免误停新内容。
+     * 集合是弱引用，Activity 回收后自动消失，不要在 onDestroy 里主动清：
+     * 延迟 300ms 的退出判定还要靠这个标记兜底，提前清掉会绕过保护。
+     */
+    @JvmStatic
+    fun isSuperseded(activity: Activity): Boolean = superseded.contains(activity)
+
     @JvmStatic
     fun hasFrontPlaybackPage(): Boolean {
         for (activity in ActivityStack.getInstance().activities()) {

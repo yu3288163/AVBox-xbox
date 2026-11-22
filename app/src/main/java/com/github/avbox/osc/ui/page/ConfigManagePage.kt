@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -578,6 +579,8 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit, initialOpenRepo: Boolean = fa
                     repoEntries.firstOrNull { HistoryHelper.apiLineUrl(it) == url }.orEmpty(),
                 )
                 vm.requestSwitch(SubscribeSource(name, url), isVod)
+                // 正常切仓保持面板打开，可继续改选；只有「被禁用的源」要弹确认框
+                // 时才收起面板，避免两个弹层叠在一起。
                 if (vm.pendingSwitch.value != null) repoSheetOpen = false
             },
         )
@@ -592,8 +595,6 @@ private fun RepoSwitchSheet(
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
-    val dismissAnimated = LocalSheetDismiss.current
-    var accepted by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val visible = remember(entries, query) {
         val q = query.trim()
@@ -621,7 +622,10 @@ private fun RepoSwitchSheet(
         }
         SettingsGroup(
             title = null,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            modifier = Modifier
+                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                // 最后一项别压在系统三键导航栏上，否则手指会触发系统按键而不是点中条目
+                .navigationBarsPadding(),
         ) {
             visible.forEachIndexed { index, entry ->
                 val url = HistoryHelper.apiLineUrl(entry)
@@ -637,11 +641,10 @@ private fun RepoSwitchSheet(
                     SettingsOptionRow(
                         title = HistoryHelper.apiLineName(entry),
                         selected = url == activeUrl,
-                        onClick = onClick@{
-                            if (accepted) return@onClick
-                            accepted = true
+                        onClick = {
+                            // 只切仓、不关面板：同一个面板里可以反复改选，
+                            // 不用退出再进来。点遮罩 / 下滑 / 返回键才关闭。
                             if (url.isNotEmpty() && url != activeUrl) onSelect(url)
-                            dismissAnimated()
                         },
                         trailing = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -665,6 +668,8 @@ private fun RepoSwitchSheet(
                 }
             }
         }
+        // 再给最后一项留一段可滚动的缓冲，滚到底时它不会贴着屏幕边缘
+        Spacer(Modifier.height(24.dp))
     }
 }
 

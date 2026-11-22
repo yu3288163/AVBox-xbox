@@ -205,6 +205,8 @@ class LivePlayActivity : BaseActivity(), PipActionReceiver.PipLiveSwitch {
 
     override fun onResume() {
         super.onResume()
+        // 从旧画中画小窗外点开新内容时，把仍挂在系统画中画里的旧播放页收掉
+        PlaybackForegroundGuard.dismissStalePipPages(this)
         applyStatusBarAppearance()
         exitingLivePlay = false
         val takenOverByVod = PlaybackService.peek()?.enterLiveState() ?: false
@@ -220,7 +222,9 @@ class LivePlayActivity : BaseActivity(), PipActionReceiver.PipLiveSwitch {
 
     override fun onPause() {
         super.onPause()
-        // 画中画期间系统同样回调 onPause，此时要继续播，不能停
+        // 画中画期间系统同样回调 onPause，此时要继续播，不能停；
+        // 被新播放页接管而关掉时也不能暂停共用内核，否则新内容会被一起停住。
+        if (PlaybackForegroundGuard.isSuperseded(this)) return
         val pip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
         if (!exitingLivePlay && !pip) kernelView?.pause()
     }
@@ -229,7 +233,10 @@ class LivePlayActivity : BaseActivity(), PipActionReceiver.PipLiveSwitch {
         PlaybackForegroundGuard.cancel(this)
         super.onDestroy()
         overlay.hideSwitchChannelSnapshot()
-        PlaybackService.peek()?.exitLive()
+        // exitLive() 会 videoView.release() 掉共用内核：被新页接管时绝不能调
+        if (!PlaybackForegroundGuard.isSuperseded(this)) {
+            PlaybackService.peek()?.exitLive()
+        }
         kernelView = null
         handler.removeCallbacksAndMessages(null)
         epgController.cancelAll()
@@ -342,6 +349,8 @@ class LivePlayActivity : BaseActivity(), PipActionReceiver.PipLiveSwitch {
 
     private fun stopPlaybackForPipClose() {
         if (pipCloseHandled) return
+        // 被新播放页接管而关掉：共用内核正在播新内容，绝不能走关小窗停播放
+        if (PlaybackForegroundGuard.isSuperseded(this)) return
         pipCloseHandled = true
         pipWasActive = false
         PlaybackForegroundGuard.cancel(this)
